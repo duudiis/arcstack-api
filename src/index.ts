@@ -16,7 +16,8 @@ import { createAuthMiddleware } from "./middleware/authenticate.js";
 import { authRoutes } from "./routes/auth.js";
 import { arcsRoutes } from "./routes/arcs.js";
 import { healthRoutes } from "./routes/health.js";
-import { setupSocketServer } from "./socket/index.js";
+import websocket from "@fastify/websocket";
+import { setupWebSockets } from "./socket/index.js";
 import { AIFactory } from "./llm/factory.js";
 import { LlmOrchestrator } from "./llm/orchestrator.js";
 
@@ -77,14 +78,14 @@ async function main() {
   const authHandler = new AuthHandler(prisma, authService);
   const arcsHandler = new ArcsHandler(arcService);
 
+  await app.register(websocket);
+
   authRoutes(app, authHandler, authenticate);
   arcsRoutes(app, arcsHandler, authenticate);
   healthRoutes(app, prisma, redis);
+  await setupWebSockets(app, authService, arcService, agentService, orchestrator);
 
   await app.listen({ port: config.PORT, host: config.HOST });
-
-  const httpServer = app.server;
-  setupSocketServer(httpServer, authService, arcService, agentService, orchestrator);
 
   logger.info(`ArcStack API running on http://${config.HOST}:${config.PORT}`);
 

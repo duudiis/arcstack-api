@@ -1,19 +1,18 @@
-import type { Socket } from "socket.io";
-import type { MetricsPayload, ToolResultPayload } from "../types/index.js";
+import type { WebSocket } from "ws";
+import type { ToolResultPayload } from "../types/index.js";
 
 interface ConnectedAgent {
-  socket: Socket;
+  ws: WebSocket;
   arcId: string;
   userId: string;
-  capabilities: string[];
 }
 
 export class AgentService {
   private agents = new Map<string, ConnectedAgent>();
   private pendingToolCalls = new Map<string, (result: ToolResultPayload) => void>();
 
-  registerAgent(arcId: string, userId: string, socket: Socket, capabilities: string[]) {
-    this.agents.set(arcId, { socket, arcId, userId, capabilities });
+  registerAgent(arcId: string, userId: string, ws: WebSocket) {
+    this.agents.set(arcId, { ws, arcId, userId });
   }
 
   unregisterAgent(arcId: string) {
@@ -36,7 +35,7 @@ export class AgentService {
     timeoutMs = 30_000,
   ): Promise<ToolResultPayload> {
     const agent = this.agents.get(arcId);
-    if (!agent) {
+    if (!agent || agent.ws.readyState !== 1) {
       return {
         arcId,
         requestId,
@@ -66,7 +65,9 @@ export class AgentService {
         resolve(result);
       });
 
-      agent.socket.emit("tool:execute", { arcId, requestId, tool, params });
+      agent.ws.send(
+        JSON.stringify({ type: "tool:execute", arcId, requestId, tool, params }),
+      );
     });
   }
 

@@ -55,28 +55,17 @@ export interface ToolResultPayload {
   executionTimeMs: number;
 }
 
-export interface ClientToServerEvents {
-  "chat:send": (data: { arcId: string; content: string }) => void;
-  "metrics:subscribe": (data: { arcId: string }) => void;
-  "metrics:unsubscribe": (data: { arcId: string }) => void;
-}
-
-export interface ServerToClientEvents {
-  "chat:message": (data: MessageResponse) => void;
-  "chat:stream": (data: { arcId: string; chunk: string; done: boolean }) => void;
-  "arc:status": (data: { arcId: string; status: ArcStatus }) => void;
-  "metrics:update": (data: { arcId: string } & MetricsPayload) => void;
-  error: (data: { code: string; message: string }) => void;
-}
-
-export interface AgentToServerEvents {
-  "agent:register": (data: { arcId: string; capabilities: string[] }) => void;
-  "tool:result": (data: ToolResultPayload) => void;
-  "agent:metrics": (data: { arcId: string } & MetricsPayload) => void;
-  "agent:heartbeat": () => void;
-}
-
-export interface ServerToAgentEvents {
-  "tool:execute": (data: ToolExecutePayload) => void;
-  "agent:disconnect": (data: { reason: string }) => void;
-}
+// WebSocket message types (JSON protocol with `type` field routing)
+export type WsMessageType =
+  | "chat:send"
+  | "chat:message"
+  | "chat:stream"
+  | "arc:status"
+  | "metrics:subscribe"
+  | "metrics:unsubscribe"
+  | "metrics:update"
+  | "tool:execute"
+  | "tool:result"
+  | "agent:heartbeat"
+  | "agent:metrics"
+  | "error";
