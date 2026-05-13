@@ -1,0 +1,80 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  arcs     Arc[]
+  sessions Session[]
+
+  @@map("users")
+}
+
+model Arc {
+  id         String    @id @default(cuid())
+  name       String
+  status     ArcStatus @default(OFFLINE)
+  agentToken String    @unique @map("agent_token")
+  userId     String    @map("user_id")
+  lastSeenAt DateTime? @map("last_seen_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([userId])
+  @@map("arcs")
+}
+
+enum ArcStatus {
+  ONLINE
+  OFFLINE
+  ERROR
+}
+
+model Message {
+  id        String      @id @default(cuid())
+  role      MessageRole
+  content   String
+  toolName  String?     @map("tool_name")
+  toolData  Json?       @map("tool_data")
+  arcId     String      @map("arc_id")
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  arc Arc @relation(fields: [arcId], references: [id], onDelete: Cascade)
+
+  @@index([arcId, createdAt])
+  @@map("messages")
+}
+
+enum MessageRole {
+  USER
+  ARC
+  SYSTEM
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  refreshToken String   @unique @map("refresh_token")
+  userAgent    String?  @map("user_agent")
+  expiresAt    DateTime @map("expires_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
