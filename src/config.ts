@@ -22,7 +22,7 @@ const envSchema = z.object({
   AWS_KEY_PAIR_NAME: z.string().min(1),
   AWS_INSTANCE_TYPE: z.string().default("t2.micro"),
 
-  // Public URL the agent connects back to (wss://api.arcstack.dudis.space or ws://localhost:4000)
+  // Public URL the agent connects back to (wss://api.dudis.space or ws://localhost:4000)
   AGENT_WS_URL: z.string().default("ws://localhost:4000"),
   // Git repo URL for the agent (cloned on each instance)
   AGENT_REPO_URL: z.string().default("https://github.com/duudiis/arcstack-agent.git"),
