@@ -47,6 +47,19 @@ async function main() {
     keyGenerator: (req) => req.ip,
   });
 
+  // Allow empty body with Content-Type: application/json (CORS preflight, GET requests)
+  app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
+    if (!body || (typeof body === "string" && body.length === 0)) {
+      done(null, undefined);
+    } else {
+      try {
+        done(null, JSON.parse(body as string));
+      } catch (err) {
+        done(err as Error, undefined);
+      }
+    }
+  });
+
   app.setErrorHandler((error: Error & { validation?: unknown; statusCode?: number }, request, reply) => {
     if (error instanceof AppError) {
       reply.status(error.statusCode).send({
