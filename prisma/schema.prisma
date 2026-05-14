@@ -22,14 +22,17 @@ model User {
 }
 
 model Arc {
-  id         String    @id @default(cuid())
-  name       String
-  status     ArcStatus @default(OFFLINE)
-  agentToken String    @unique @map("agent_token")
-  userId     String    @map("user_id")
-  lastSeenAt DateTime? @map("last_seen_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
+  id           String     @id @default(cuid())
+  name         String
+  status       ArcStatus  @default(OFFLINE)
+  agentToken   String     @unique @map("agent_token")
+  userId       String     @map("user_id")
+  instanceId   String?    @map("instance_id")
+  instanceIp   String?    @map("instance_ip")
+  instanceState String?   @map("instance_state")
+  lastSeenAt   DateTime?  @map("last_seen_at")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages Message[]

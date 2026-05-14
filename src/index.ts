@@ -10,6 +10,7 @@ import { AppError } from "./utils/errors.js";
 import { AuthService } from "./services/auth.service.js";
 import { ArcService } from "./services/arc.service.js";
 import { AgentService } from "./services/agent.service.js";
+import { ComputeService } from "./services/compute.service.js";
 import { AuthHandler } from "./handlers/auth.handler.js";
 import { ArcsHandler } from "./handlers/arcs.handler.js";
 import { createAuthMiddleware } from "./middleware/authenticate.js";
@@ -66,7 +67,8 @@ async function main() {
   });
 
   const authService = new AuthService(prisma);
-  const arcService = new ArcService(prisma);
+  const computeService = new ComputeService(prisma);
+  const arcService = new ArcService(prisma, computeService);
   const agentService = new AgentService();
 
   const llmProvider = AIFactory.create("openai", {

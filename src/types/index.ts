@@ -17,6 +17,9 @@ export interface ArcResponse {
   id: string;
   name: string;
   status: ArcStatus;
+  instanceId: string | null;
+  instanceIp: string | null;
+  instanceState: string | null;
   lastSeenAt: string | null;
   createdAt: string;
 }
