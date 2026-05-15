@@ -136,12 +136,12 @@ export class ConversationService {
     return llmMessages;
   }
 
-  async autoNameConversation(conversationId: string, userMessage: string, arcResponse: string) {
-    if (!this.llmProvider) return;
+  async autoNameConversation(conversationId: string, userMessage: string, arcResponse: string): Promise<string | null> {
+    if (!this.llmProvider) return null;
 
     try {
       const conv = await this.prisma.conversation.findUnique({ where: { id: conversationId } });
-      if (!conv || conv.name !== "New Chat") return;
+      if (!conv || conv.name !== "New Chat") return null;
 
       const response = await this.llmProvider.chat([
         {
@@ -159,9 +159,11 @@ export class ConversationService {
           where: { id: conversationId },
           data: { name },
         });
+        return name;
       }
     } catch (err) {
       logger.error({ conversationId, err }, "Failed to auto-name conversation");
     }
+    return null;
   }
 }

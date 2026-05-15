@@ -227,9 +227,9 @@ async function handleClientMessage(
         });
 
         // Auto-name the conversation after first exchange
-        conversationService.autoNameConversation(conversationId, content, response.content).then((result) => {
-          if (result !== undefined) {
-            sendToClient(conn.ws, "conversation:updated", { conversationId });
+        conversationService.autoNameConversation(conversationId, content, response.content).then((newName) => {
+          if (newName) {
+            sendToClient(conn.ws, "conversation:updated", { conversationId, name: newName });
           }
         }).catch(() => {});
       } catch (err) {
