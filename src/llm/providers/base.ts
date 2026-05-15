@@ -33,6 +33,10 @@ export interface ProviderConfig {
   model?: string;
 }
 
+export interface ChatOptions {
+  model?: string;
+}
+
 export abstract class BaseProvider {
   abstract name: string;
 
@@ -41,11 +45,13 @@ export abstract class BaseProvider {
   abstract chat(
     messages: LlmMessage[],
     tools?: ToolDefinition[],
+    options?: ChatOptions,
   ): Promise<LlmResponse>;
 
   abstract chatStream(
     messages: LlmMessage[],
     tools?: ToolDefinition[],
     callbacks?: LlmStreamCallbacks,
+    options?: ChatOptions,
   ): Promise<LlmResponse>;
 }

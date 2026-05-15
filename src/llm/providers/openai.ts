@@ -7,6 +7,7 @@ import {
   type ToolDefinition,
   type ProviderConfig,
   type ToolCall,
+  type ChatOptions,
 } from "./base.js";
 
 export class OpenAIProvider extends BaseProvider {
@@ -69,9 +70,9 @@ export class OpenAIProvider extends BaseProvider {
     return { content: msg.content, toolCalls };
   }
 
-  async chat(messages: LlmMessage[], tools?: ToolDefinition[]): Promise<LlmResponse> {
+  async chat(messages: LlmMessage[], tools?: ToolDefinition[], options?: ChatOptions): Promise<LlmResponse> {
     const response = await this.client.chat.completions.create({
-      model: this.model,
+      model: options?.model ?? this.model,
       messages: this.toOpenAIMessages(messages),
       tools: tools?.length ? this.toOpenAITools(tools) : undefined,
       temperature: 0.3,
@@ -84,9 +85,10 @@ export class OpenAIProvider extends BaseProvider {
     messages: LlmMessage[],
     tools?: ToolDefinition[],
     callbacks?: LlmStreamCallbacks,
+    options?: ChatOptions,
   ): Promise<LlmResponse> {
     const stream = await this.client.chat.completions.create({
-      model: this.model,
+      model: options?.model ?? this.model,
       messages: this.toOpenAIMessages(messages),
       tools: tools?.length ? this.toOpenAITools(tools) : undefined,
       temperature: 0.3,

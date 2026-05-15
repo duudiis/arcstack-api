@@ -36,9 +36,11 @@ export class LlmOrchestrator {
     history: LlmMessage[],
     mode: ArcMode = "default",
     onEvent?: (event: ChatEvent) => void,
+    model?: string,
   ): Promise<OrchestratorResponse> {
     const messages: LlmMessage[] = buildMessages(userMessage, history, mode);
     const allToolCalls: OrchestratorResponse["toolCalls"] = [];
+    const chatOpts = model ? { model } : undefined;
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       onEvent?.({ type: "thinking" });
@@ -46,7 +48,7 @@ export class LlmOrchestrator {
       const response = await this.provider.chatStream(messages, TOOL_DEFINITIONS, {
         onToken: (token) => onEvent?.({ type: "stream", content: token }),
         onDone: () => {},
-      });
+      }, chatOpts);
 
       // No tool calls — we have a final text response
       if (response.toolCalls.length === 0) {
@@ -125,6 +127,7 @@ export class LlmOrchestrator {
         onToken: (token) => onEvent?.({ type: "stream", content: token }),
         onDone: () => {},
       },
+      chatOpts,
     );
 
     const content = finalResponse.content ?? "I've completed the requested operations.";

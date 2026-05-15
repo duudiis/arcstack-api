@@ -13,10 +13,13 @@ import { AgentService } from "./services/agent.service.js";
 import { ComputeService } from "./services/compute.service.js";
 import { AuthHandler } from "./handlers/auth.handler.js";
 import { ArcsHandler } from "./handlers/arcs.handler.js";
+import { ConversationsHandler } from "./handlers/conversations.handler.js";
 import { createAuthMiddleware } from "./middleware/authenticate.js";
 import { authRoutes } from "./routes/auth.js";
 import { arcsRoutes } from "./routes/arcs.js";
+import { conversationsRoutes } from "./routes/conversations.js";
 import { healthRoutes } from "./routes/health.js";
+import { ConversationService } from "./services/conversation.service.js";
 import websocket from "@fastify/websocket";
 import { setupWebSockets } from "./socket/index.js";
 import { AIFactory } from "./llm/factory.js";
@@ -92,17 +95,20 @@ async function main() {
     apiKey: config.OPENAI_API_KEY,
   });
   const orchestrator = new LlmOrchestrator(llmProvider);
+  const conversationService = new ConversationService(prisma, llmProvider);
 
   const authenticate = createAuthMiddleware(authService);
   const authHandler = new AuthHandler(prisma, authService);
   const arcsHandler = new ArcsHandler(arcService);
+  const conversationsHandler = new ConversationsHandler(conversationService, arcService);
 
   await app.register(websocket);
 
   authRoutes(app, authHandler, authenticate);
   arcsRoutes(app, arcsHandler, authenticate);
+  conversationsRoutes(app, conversationsHandler, authenticate);
   healthRoutes(app, prisma, redis);
-  await setupWebSockets(app, authService, arcService, agentService, orchestrator);
+  await setupWebSockets(app, authService, arcService, conversationService, agentService, orchestrator);
 
   await app.listen({ port: config.PORT, host: config.HOST });
 

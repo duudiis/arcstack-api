@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
 import { AuthService } from "../services/auth.service.js";
 import { ArcService } from "../services/arc.service.js";
+import { ConversationService } from "../services/conversation.service.js";
 import { AgentService } from "../services/agent.service.js";
 import type { LlmOrchestrator } from "../llm/orchestrator.js";
 import { logger } from "../utils/logger.js";
@@ -64,6 +65,7 @@ export async function setupWebSockets(
   app: FastifyInstance,
   authService: AuthService,
   arcService: ArcService,
+  conversationService: ConversationService,
   agentService: AgentService,
   orchestrator: LlmOrchestrator,
 ) {
@@ -93,7 +95,7 @@ export async function setupWebSockets(
     socket.on("message", async (raw) => {
       try {
         const msg: WsMessage = JSON.parse(raw.toString());
-        await handleClientMessage(conn, msg, arcService, agentService, orchestrator);
+        await handleClientMessage(conn, msg, arcService, conversationService, agentService, orchestrator);
       } catch (err) {
         sendToClient(socket, "error", { code: "PARSE_ERROR", message: "Invalid message format" });
       }
@@ -151,37 +153,42 @@ async function handleClientMessage(
   conn: ClientConnection,
   msg: WsMessage,
   arcService: ArcService,
+  conversationService: ConversationService,
   agentService: AgentService,
   orchestrator: LlmOrchestrator,
 ) {
   switch (msg.type) {
     case "chat:send": {
-      const arcId = msg.arcId as string;
+      const conversationId = msg.conversationId as string;
       const content = msg.content as string;
       const mode = (msg.mode as string) || "default";
-      if (!arcId || !content) return;
+      const model = (msg.model as string) || undefined;
+      if (!conversationId || !content) return;
 
-      const arc = await arcService.getById(arcId, conn.userId);
-      if (!arc) {
-        sendToClient(conn.ws, "error", { code: "NOT_FOUND", message: "Arc not found" });
+      const conversation = await conversationService.getById(conversationId, conn.userId);
+      if (!conversation) {
+        sendToClient(conn.ws, "error", { code: "NOT_FOUND", message: "Conversation not found" });
         return;
       }
 
-      await arcService.createMessage(arcId, "USER", content);
+      const arcId = conversation.arcId;
 
-      const history = await arcService.getHistoryForLlm(arcId);
+      await conversationService.createMessage(conversationId, arcId, "USER", content);
+
+      const history = await conversationService.getHistoryForLlm(conversationId);
 
       try {
         const response = await orchestrator.processMessage(arcId, content, agentService, history, mode as any, (event) => {
           switch (event.type) {
             case "thinking":
-              sendToClient(conn.ws, "chat:thinking", { arcId });
+              sendToClient(conn.ws, "chat:thinking", { conversationId, arcId });
               break;
             case "stream":
-              sendToClient(conn.ws, "chat:stream", { arcId, token: event.content });
+              sendToClient(conn.ws, "chat:stream", { conversationId, arcId, token: event.content });
               break;
             case "tool_call":
               sendToClient(conn.ws, "chat:tool_call", {
+                conversationId,
                 arcId,
                 tool: event.toolName,
                 params: event.toolParams,
@@ -189,15 +196,17 @@ async function handleClientMessage(
               break;
             case "tool_result":
               sendToClient(conn.ws, "chat:tool_result", {
+                conversationId,
                 arcId,
                 tool: event.toolName,
                 result: event.toolResult,
               });
               break;
           }
-        });
+        }, model);
 
-        const saved = await arcService.createMessage(
+        const saved = await conversationService.createMessage(
+          conversationId,
           arcId,
           "ARC",
           response.content,
@@ -206,6 +215,7 @@ async function handleClientMessage(
         );
 
         sendToClient(conn.ws, "chat:message", {
+          conversationId,
           arcId,
           id: saved.id,
           role: "ARC",
@@ -215,10 +225,18 @@ async function handleClientMessage(
           toolCalls: response.toolCalls,
           createdAt: saved.createdAt.toISOString(),
         });
+
+        // Auto-name the conversation after first exchange
+        conversationService.autoNameConversation(conversationId, content, response.content).then((result) => {
+          if (result !== undefined) {
+            sendToClient(conn.ws, "conversation:updated", { conversationId });
+          }
+        }).catch(() => {});
       } catch (err) {
         logger.error(err, "Error processing chat message");
         const errMsg = err instanceof Error ? err.message : "Failed to process message";
         sendToClient(conn.ws, "chat:error", {
+          conversationId,
           arcId,
           code: "PROCESSING_ERROR",
           message: errMsg,

@@ -15,8 +15,9 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  arcs     Arc[]
-  sessions Session[]
+  arcs          Arc[]
+  sessions      Session[]
+  conversations Conversation[]
 
   @@map("users")
 }
@@ -34,8 +35,9 @@ model Arc {
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @updatedAt @map("updated_at")
 
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages Message[]
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages      Message[]
+  conversations Conversation[]
 
   @@index([userId])
   @@map("arcs")
@@ -47,18 +49,36 @@ enum ArcStatus {
   ERROR
 }
 
+model Conversation {
+  id        String   @id @default(cuid())
+  name      String   @default("New Chat")
+  userId    String   @map("user_id")
+  arcId     String   @map("arc_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  arc      Arc       @relation(fields: [arcId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([userId, updatedAt])
+  @@map("conversations")
+}
+
 model Message {
-  id        String      @id @default(cuid())
-  role      MessageRole
-  content   String
-  toolName  String?     @map("tool_name")
-  toolData  Json?       @map("tool_data")
-  arcId     String      @map("arc_id")
-  createdAt DateTime    @default(now()) @map("created_at")
+  id             String      @id @default(cuid())
+  role           MessageRole
+  content        String
+  toolName       String?     @map("tool_name")
+  toolData       Json?       @map("tool_data")
+  arcId          String      @map("arc_id")
+  conversationId String      @map("conversation_id")
+  createdAt      DateTime    @default(now()) @map("created_at")
 
-  arc Arc @relation(fields: [arcId], references: [id], onDelete: Cascade)
+  arc          Arc          @relation(fields: [arcId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
-  @@index([arcId, createdAt])
+  @@index([conversationId, createdAt])
   @@map("messages")
 }
 
