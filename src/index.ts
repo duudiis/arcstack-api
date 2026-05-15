@@ -86,6 +86,8 @@ async function main() {
   const arcService = new ArcService(prisma, computeService);
   const agentService = new AgentService();
 
+  computeService.ensureSshAccess().catch(() => {});
+
   const llmProvider = AIFactory.create("openai", {
     apiKey: config.OPENAI_API_KEY,
   });

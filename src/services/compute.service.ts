@@ -4,6 +4,8 @@ import {
   TerminateInstancesCommand,
   DescribeInstancesCommand,
   DescribeInstanceStatusCommand,
+  AuthorizeSecurityGroupIngressCommand,
+  GetConsoleOutputCommand,
   waitUntilInstanceRunning,
   type Instance,
 } from "@aws-sdk/client-ec2";
@@ -238,6 +240,42 @@ echo "Finished: $(date)"
       );
       const instance = result.Reservations?.[0]?.Instances?.[0];
       return instance?.State?.Name ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  async ensureSshAccess(): Promise<void> {
+    try {
+      await this.ec2.send(
+        new AuthorizeSecurityGroupIngressCommand({
+          GroupId: config.AWS_SECURITY_GROUP_ID,
+          IpPermissions: [
+            {
+              IpProtocol: "tcp",
+              FromPort: 22,
+              ToPort: 22,
+              IpRanges: [{ CidrIp: "0.0.0.0/0", Description: "SSH access" }],
+            },
+          ],
+        }),
+      );
+      logger.info("SSH ingress rule added to security group");
+    } catch (err: any) {
+      if (err.Code === "InvalidPermission.Duplicate") {
+        logger.debug("SSH ingress rule already exists");
+      } else {
+        logger.warn({ err }, "Failed to add SSH ingress rule");
+      }
+    }
+  }
+
+  async getConsoleOutput(instanceId: string): Promise<string | null> {
+    try {
+      const result = await this.ec2.send(
+        new GetConsoleOutputCommand({ InstanceId: instanceId }),
+      );
+      return result.Output ? Buffer.from(result.Output, "base64").toString("utf-8") : null;
     } catch {
       return null;
     }

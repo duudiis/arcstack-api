@@ -46,7 +46,7 @@ export function broadcastToClients(type: string, data: Record<string, unknown>) 
 }
 
 export function sendToMetricsSubscribers(arcId: string, data: Record<string, unknown>) {
-  const msg = JSON.stringify({ type: "metrics:update", arcId, ...data });
+  const msg = JSON.stringify({ type: "metrics:update", ...data, arcId });
   for (const [, client] of clients) {
     if (client.subscribedMetrics.has(arcId) && client.ws.readyState === 1) {
       client.ws.send(msg);
