@@ -206,6 +206,7 @@ async function handleClientMessage(
         );
 
         sendToClient(conn.ws, "chat:message", {
+          arcId,
           id: saved.id,
           role: "ARC",
           content: saved.content,
