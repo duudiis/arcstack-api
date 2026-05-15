@@ -3,6 +3,7 @@ import {
   BaseProvider,
   type LlmMessage,
   type LlmResponse,
+  type LlmStreamCallbacks,
   type ToolDefinition,
   type ProviderConfig,
   type ToolCall,
@@ -24,17 +25,29 @@ export class OpenAIProvider extends BaseProvider {
       if (m.role === "tool") {
         return {
           role: "tool" as const,
-          content: m.content,
+          content: m.content ?? "",
           tool_call_id: m.toolCallId!,
         };
       }
-      return { role: m.role as "system" | "user" | "assistant", content: m.content };
+      if (m.role === "assistant" && m.toolCalls?.length) {
+        return {
+          role: "assistant" as const,
+          content: m.content ?? null,
+          tool_calls: m.toolCalls.map((tc) => ({
+            id: tc.id,
+            type: "function" as const,
+            function: {
+              name: tc.tool,
+              arguments: JSON.stringify(tc.params),
+            },
+          })),
+        };
+      }
+      return { role: m.role as "system" | "user" | "assistant", content: m.content ?? "" };
     });
   }
 
-  private toOpenAITools(
-    tools: ToolDefinition[],
-  ): OpenAI.ChatCompletionTool[] {
+  private toOpenAITools(tools: ToolDefinition[]): OpenAI.ChatCompletionTool[] {
     return tools.map((t) => ({
       type: "function" as const,
       function: {
@@ -53,10 +66,7 @@ export class OpenAIProvider extends BaseProvider {
       params: JSON.parse(tc.function.arguments),
     }));
 
-    return {
-      content: msg.content,
-      toolCalls,
-    };
+    return { content: msg.content, toolCalls };
   }
 
   async chat(messages: LlmMessage[], tools?: ToolDefinition[]): Promise<LlmResponse> {
@@ -70,16 +80,52 @@ export class OpenAIProvider extends BaseProvider {
     return this.parseResponse(response.choices[0]!);
   }
 
-  async chatWithToolResult(
+  async chatStream(
     messages: LlmMessage[],
-    toolCallId: string,
-    toolResult: string,
     tools?: ToolDefinition[],
+    callbacks?: LlmStreamCallbacks,
   ): Promise<LlmResponse> {
-    const allMessages: LlmMessage[] = [
-      ...messages,
-      { role: "tool", content: toolResult, toolCallId },
-    ];
-    return this.chat(allMessages, tools);
+    const stream = await this.client.chat.completions.create({
+      model: this.model,
+      messages: this.toOpenAIMessages(messages),
+      tools: tools?.length ? this.toOpenAITools(tools) : undefined,
+      temperature: 0.3,
+      stream: true,
+    });
+
+    let content = "";
+    const toolCallChunks = new Map<number, { id: string; name: string; args: string }>();
+
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta;
+      if (!delta) continue;
+
+      if (delta.content) {
+        content += delta.content;
+        callbacks?.onToken(delta.content);
+      }
+
+      if (delta.tool_calls) {
+        for (const tc of delta.tool_calls) {
+          if (!toolCallChunks.has(tc.index)) {
+            toolCallChunks.set(tc.index, { id: tc.id ?? "", name: tc.function?.name ?? "", args: "" });
+          }
+          const existing = toolCallChunks.get(tc.index)!;
+          if (tc.id) existing.id = tc.id;
+          if (tc.function?.name) existing.name = tc.function.name;
+          if (tc.function?.arguments) existing.args += tc.function.arguments;
+        }
+      }
+    }
+
+    callbacks?.onDone(content);
+
+    const toolCalls: ToolCall[] = Array.from(toolCallChunks.values()).map((tc) => ({
+      id: tc.id,
+      tool: tc.name,
+      params: tc.args ? JSON.parse(tc.args) : {},
+    }));
+
+    return { content: content || null, toolCalls };
   }
 }

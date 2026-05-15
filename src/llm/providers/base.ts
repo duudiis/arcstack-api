@@ -6,8 +6,9 @@ export interface ToolDefinition {
 
 export interface LlmMessage {
   role: "system" | "user" | "assistant" | "tool";
-  content: string;
+  content: string | null;
   toolCallId?: string;
+  toolCalls?: ToolCall[];
   name?: string;
 }
 
@@ -20,6 +21,11 @@ export interface ToolCall {
 export interface LlmResponse {
   content: string | null;
   toolCalls: ToolCall[];
+}
+
+export interface LlmStreamCallbacks {
+  onToken: (token: string) => void;
+  onDone: (fullContent: string) => void;
 }
 
 export interface ProviderConfig {
@@ -37,10 +43,9 @@ export abstract class BaseProvider {
     tools?: ToolDefinition[],
   ): Promise<LlmResponse>;
 
-  abstract chatWithToolResult(
+  abstract chatStream(
     messages: LlmMessage[],
-    toolCallId: string,
-    toolResult: string,
     tools?: ToolDefinition[],
+    callbacks?: LlmStreamCallbacks,
   ): Promise<LlmResponse>;
 }

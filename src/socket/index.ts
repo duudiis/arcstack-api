@@ -168,17 +168,32 @@ async function handleClientMessage(
 
       await arcService.createMessage(arcId, "USER", content);
 
-      sendToClient(conn.ws, "chat:message", {
-        id: "",
-        role: "USER",
-        content,
-        toolName: null,
-        toolData: null,
-        createdAt: new Date().toISOString(),
-      });
-
       try {
-        const response = await orchestrator.processMessage(arcId, content, agentService);
+        const response = await orchestrator.processMessage(arcId, content, agentService, (event) => {
+          switch (event.type) {
+            case "thinking":
+              sendToClient(conn.ws, "chat:thinking", { arcId });
+              break;
+            case "stream":
+              sendToClient(conn.ws, "chat:stream", { arcId, token: event.content });
+              break;
+            case "tool_call":
+              sendToClient(conn.ws, "chat:tool_call", {
+                arcId,
+                tool: event.toolName,
+                params: event.toolParams,
+              });
+              break;
+            case "tool_result":
+              sendToClient(conn.ws, "chat:tool_result", {
+                arcId,
+                tool: event.toolName,
+                result: event.toolResult,
+              });
+              break;
+          }
+        });
+
         const saved = await arcService.createMessage(
           arcId,
           "ARC",
@@ -193,11 +208,17 @@ async function handleClientMessage(
           content: saved.content,
           toolName: saved.toolName,
           toolData: saved.toolData,
+          toolCalls: response.toolCalls,
           createdAt: saved.createdAt.toISOString(),
         });
       } catch (err) {
         logger.error(err, "Error processing chat message");
-        sendToClient(conn.ws, "error", { code: "INTERNAL", message: "Failed to process message" });
+        const errMsg = err instanceof Error ? err.message : "Failed to process message";
+        sendToClient(conn.ws, "chat:error", {
+          arcId,
+          code: "PROCESSING_ERROR",
+          message: errMsg,
+        });
       }
       break;
     }
