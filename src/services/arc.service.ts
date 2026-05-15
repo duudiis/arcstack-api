@@ -1,6 +1,7 @@
 import { PrismaClient, type ArcStatus } from "@prisma/client";
 import { generateToken, hashToken } from "../utils/crypto.js";
 import { ComputeService } from "./compute.service.js";
+import type { LlmMessage } from "../llm/providers/base.js";
 import { logger } from "../utils/logger.js";
 
 export class ArcService {
@@ -126,5 +127,46 @@ export class ArcService {
         toolData: toolData ? (toolData as any) : undefined,
       },
     });
+  }
+
+  async getHistoryForLlm(arcId: string, limit = 50): Promise<LlmMessage[]> {
+    const messages = await this.prisma.message.findMany({
+      where: { arcId },
+      orderBy: { createdAt: "asc" },
+      take: limit,
+    });
+
+    const llmMessages: LlmMessage[] = [];
+
+    for (const msg of messages) {
+      if (msg.role === "USER") {
+        llmMessages.push({ role: "user", content: msg.content });
+      } else if (msg.role === "ARC") {
+        const toolData = msg.toolData as any;
+        if (toolData?.calls && Array.isArray(toolData.calls)) {
+          // Message had tool calls — reconstruct the assistant + tool messages
+          for (const call of toolData.calls) {
+            const fakeId = `hist_${msg.id}_${call.tool}`;
+            llmMessages.push({
+              role: "assistant",
+              content: null,
+              toolCalls: [{ id: fakeId, tool: call.tool, params: call.params }],
+            });
+            llmMessages.push({
+              role: "tool",
+              content: call.result?.success ? call.result.output : `Error: ${call.result?.error ?? "Unknown"}`,
+              toolCallId: fakeId,
+            });
+          }
+          // Then add the final assistant text
+          llmMessages.push({ role: "assistant", content: msg.content });
+        } else {
+          llmMessages.push({ role: "assistant", content: msg.content });
+        }
+      }
+      // Skip SYSTEM messages — they're not relevant to LLM context
+    }
+
+    return llmMessages;
   }
 }

@@ -158,6 +158,7 @@ async function handleClientMessage(
     case "chat:send": {
       const arcId = msg.arcId as string;
       const content = msg.content as string;
+      const mode = (msg.mode as string) || "default";
       if (!arcId || !content) return;
 
       const arc = await arcService.getById(arcId, conn.userId);
@@ -168,8 +169,10 @@ async function handleClientMessage(
 
       await arcService.createMessage(arcId, "USER", content);
 
+      const history = await arcService.getHistoryForLlm(arcId);
+
       try {
-        const response = await orchestrator.processMessage(arcId, content, agentService, (event) => {
+        const response = await orchestrator.processMessage(arcId, content, agentService, history, mode as any, (event) => {
           switch (event.type) {
             case "thinking":
               sendToClient(conn.ws, "chat:thinking", { arcId });

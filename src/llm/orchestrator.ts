@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { BaseProvider, LlmMessage, ToolCall } from "./providers/base.js";
-import { TOOL_DEFINITIONS, buildMessages } from "./prompts.js";
+import { TOOL_DEFINITIONS, buildMessages, type ArcMode } from "./prompts.js";
 import type { AgentService } from "../services/agent.service.js";
 import { logger } from "../utils/logger.js";
 
-const MAX_TOOL_ROUNDS = 5;
+const MAX_TOOL_ROUNDS = 10;
 
 export interface ChatEvent {
   type: "thinking" | "tool_call" | "tool_result" | "stream" | "done" | "error";
@@ -33,27 +33,22 @@ export class LlmOrchestrator {
     arcId: string,
     userMessage: string,
     agentService: AgentService,
+    history: LlmMessage[],
+    mode: ArcMode = "default",
     onEvent?: (event: ChatEvent) => void,
   ): Promise<OrchestratorResponse> {
-    const messages: LlmMessage[] = buildMessages(userMessage);
+    const messages: LlmMessage[] = buildMessages(userMessage, history, mode);
     const allToolCalls: OrchestratorResponse["toolCalls"] = [];
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       onEvent?.({ type: "thinking" });
 
-      let response;
-      if (round === 0 && allToolCalls.length === 0) {
-        response = await this.provider.chatStream(messages, TOOL_DEFINITIONS, {
-          onToken: (token) => onEvent?.({ type: "stream", content: token }),
-          onDone: () => {},
-        });
-      } else {
-        response = await this.provider.chatStream(messages, TOOL_DEFINITIONS, {
-          onToken: (token) => onEvent?.({ type: "stream", content: token }),
-          onDone: () => {},
-        });
-      }
+      const response = await this.provider.chatStream(messages, TOOL_DEFINITIONS, {
+        onToken: (token) => onEvent?.({ type: "stream", content: token }),
+        onDone: () => {},
+      });
 
+      // No tool calls — we have a final text response
       if (response.toolCalls.length === 0) {
         const content = response.content ?? "I'm not sure how to help with that.";
         const result: OrchestratorResponse = { content };
@@ -66,12 +61,21 @@ export class LlmOrchestrator {
         return result;
       }
 
-      // Process each tool call from this round
+      // Push the assistant message ONCE with all tool_calls
+      messages.push({
+        role: "assistant",
+        content: response.content,
+        toolCalls: response.toolCalls,
+      });
+
+      // Execute ALL tool calls from this response, collect results
+      const toolResults: Array<{ toolCall: ToolCall; content: string }> = [];
+
       for (const toolCall of response.toolCalls) {
         onEvent?.({ type: "tool_call", toolName: toolCall.tool, toolParams: toolCall.params });
 
         const requestId = randomUUID();
-        logger.info({ arcId, tool: toolCall.tool, params: toolCall.params }, "Executing tool on agent");
+        logger.info({ arcId, tool: toolCall.tool, params: toolCall.params, round }, "Executing tool on agent");
 
         const toolResult = await agentService.executeToolOnAgent(
           arcId,
@@ -97,22 +101,33 @@ export class LlmOrchestrator {
           ? toolResult.output
           : `Error: ${toolResult.error ?? "Unknown error"}`;
 
-        // Add assistant message with tool_calls, then tool result message
-        messages.push({
-          role: "assistant",
-          content: response.content,
-          toolCalls: response.toolCalls,
-        });
+        toolResults.push({ toolCall, content: resultContent });
+      }
+
+      // Push ALL tool result messages (one per tool_call_id)
+      for (const { toolCall, content } of toolResults) {
         messages.push({
           role: "tool",
-          content: resultContent,
+          content,
           toolCallId: toolCall.id,
         });
       }
+
+      // Loop continues — LLM will see results and can respond or call more tools
     }
 
-    // Exceeded max rounds — summarize what happened
-    const content = "I've completed the requested operations.";
+    // Exceeded max rounds — ask LLM for a final summary without tools
+    onEvent?.({ type: "thinking" });
+    const finalResponse = await this.provider.chatStream(
+      [...messages, { role: "user", content: "Please provide a summary of everything you've done so far." }],
+      undefined,
+      {
+        onToken: (token) => onEvent?.({ type: "stream", content: token }),
+        onDone: () => {},
+      },
+    );
+
+    const content = finalResponse.content ?? "I've completed the requested operations.";
     const result: OrchestratorResponse = {
       content,
       toolName: allToolCalls[0]?.tool,
