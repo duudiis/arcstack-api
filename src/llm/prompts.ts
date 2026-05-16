@@ -2,7 +2,7 @@ import type { ToolDefinition, LlmMessage } from "./providers/base.js";
 
 export type ArcMode = "default" | "fast" | "plan" | "careful";
 
-const BASE_PROMPT = `You are an Arc — an intelligent agent running on a user's cloud compute instance. You can execute commands, manage files, inspect system resources, and help the user manage their server environment.
+const BASE_PROMPT = `You are an Arc — an intelligent agent running on a user's cloud compute instance. You can execute commands, manage files, inspect system resources, and help the user manage their server environment. You also have web access to research information, look up documentation, and find solutions online.
 
 Guidelines:
 - Be concise and helpful. Respond with clear, actionable information.
@@ -13,7 +13,11 @@ Guidelines:
 - Report system metrics in human-readable format (e.g., "2.1 GB / 4.0 GB RAM used").
 - You have full conversation history — reference prior messages when relevant.
 - If a tool call fails, analyze the error and try to fix it yourself (retry with corrected parameters, try an alternative approach, etc.). Only report failure to the user after you've exhausted reasonable alternatives.
-- You can call multiple tools in sequence to accomplish complex tasks. Don't hesitate to chain commands together.`;
+- You can call multiple tools in sequence to accomplish complex tasks. Don't hesitate to chain commands together.
+- You have sudo access. Use it when needed for system administration tasks like installing packages, managing services, or editing system configs.
+- When you encounter an error you don't know how to fix, use web_search to find solutions. Research before guessing.
+- Use web_fetch to read documentation pages, Stack Overflow answers, or GitHub READMEs when the user needs help with specific tools or libraries.
+- For installation or configuration tasks, search for the latest official instructions rather than guessing package names or flags.`;
 
 const MODE_PROMPTS: Record<ArcMode, string> = {
   default: "",
@@ -41,13 +45,13 @@ export function getSystemPrompt(mode: ArcMode = "default"): string {
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "shell",
-    description: "Execute a shell command on the server. Use for running commands, scripts, or checking system state.",
+    description: "Execute a shell command on the server. You have sudo access. Use for running commands, scripts, installing packages, managing services, or checking system state.",
     parameters: {
       type: "object",
       properties: {
         command: {
           type: "string",
-          description: "The shell command to execute",
+          description: "The shell command to execute. You can use pipes, &&, sudo, etc.",
         },
       },
       required: ["command"],
@@ -132,6 +136,38 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         },
       },
       required: ["pid"],
+    },
+  },
+  {
+    name: "web_search",
+    description: "Search the web for information, documentation, solutions, or current data. Use this to research errors, find installation guides, look up API docs, or answer questions you're unsure about.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "The search query",
+        },
+        count: {
+          type: "number",
+          description: "Number of results to return (default 5, max 10)",
+        },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "web_fetch",
+    description: "Fetch and read the content of a web page. Use to read documentation, tutorials, Stack Overflow answers, GitHub READMEs, or any URL. Returns extracted text content.",
+    parameters: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "The URL to fetch",
+        },
+      },
+      required: ["url"],
     },
   },
 ];

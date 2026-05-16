@@ -24,6 +24,7 @@ import websocket from "@fastify/websocket";
 import { setupWebSockets } from "./socket/index.js";
 import { AIFactory } from "./llm/factory.js";
 import { LlmOrchestrator } from "./llm/orchestrator.js";
+import { WebService } from "./services/web.service.js";
 
 async function main() {
   const prisma = new PrismaClient();
@@ -94,7 +95,8 @@ async function main() {
   const llmProvider = AIFactory.create("openai", {
     apiKey: config.OPENAI_API_KEY,
   });
-  const orchestrator = new LlmOrchestrator(llmProvider);
+  const webService = new WebService();
+  const orchestrator = new LlmOrchestrator(llmProvider, webService);
   const conversationService = new ConversationService(prisma, llmProvider);
 
   const authenticate = createAuthMiddleware(authService);

@@ -2,9 +2,12 @@ import { randomUUID } from "node:crypto";
 import type { BaseProvider, LlmMessage, ToolCall } from "./providers/base.js";
 import { TOOL_DEFINITIONS, buildMessages, type ArcMode } from "./prompts.js";
 import type { AgentService } from "../services/agent.service.js";
+import type { WebService } from "../services/web.service.js";
 import { logger } from "../utils/logger.js";
 
 const MAX_TOOL_ROUNDS = 10;
+
+const SERVER_TOOLS = new Set(["web_search", "web_fetch"]);
 
 export interface ChatEvent {
   type: "thinking" | "tool_call" | "tool_result" | "stream" | "done" | "error";
@@ -27,7 +30,45 @@ export interface OrchestratorResponse {
 }
 
 export class LlmOrchestrator {
-  constructor(private provider: BaseProvider) {}
+  constructor(
+    private provider: BaseProvider,
+    private webService?: WebService,
+  ) {}
+
+  private async executeServerTool(
+    toolName: string,
+    params: Record<string, unknown>,
+  ): Promise<{ success: boolean; output: string; error?: string; executionTimeMs: number }> {
+    const start = Date.now();
+
+    try {
+      if (toolName === "web_search" && this.webService) {
+        const query = (params.query as string) ?? "";
+        const count = (params.count as number) ?? 5;
+        const results = await this.webService.search(query, count);
+        if (results.length === 0) {
+          return { success: true, output: "No results found.", executionTimeMs: Date.now() - start };
+        }
+        const formatted = results.map((r, i) =>
+          `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`
+        ).join("\n\n");
+        return { success: true, output: formatted, executionTimeMs: Date.now() - start };
+      }
+
+      if (toolName === "web_fetch" && this.webService) {
+        const url = (params.url as string) ?? "";
+        const result = await this.webService.fetch(url);
+        if (!result.content) {
+          return { success: false, output: "", error: `Failed to fetch ${url}`, executionTimeMs: Date.now() - start };
+        }
+        return { success: true, output: result.content, executionTimeMs: Date.now() - start };
+      }
+
+      return { success: false, output: "", error: `Unknown server tool: ${toolName}`, executionTimeMs: Date.now() - start };
+    } catch (err) {
+      return { success: false, output: "", error: String(err), executionTimeMs: Date.now() - start };
+    }
+  }
 
   async processMessage(
     arcId: string,
@@ -76,15 +117,21 @@ export class LlmOrchestrator {
       for (const toolCall of response.toolCalls) {
         onEvent?.({ type: "tool_call", toolName: toolCall.tool, toolParams: toolCall.params });
 
-        const requestId = randomUUID();
-        logger.info({ arcId, tool: toolCall.tool, params: toolCall.params, round }, "Executing tool on agent");
+        let toolResult: { success: boolean; output: string; error?: string; executionTimeMs: number };
 
-        const toolResult = await agentService.executeToolOnAgent(
-          arcId,
-          requestId,
-          toolCall.tool,
-          toolCall.params,
-        );
+        if (SERVER_TOOLS.has(toolCall.tool)) {
+          toolResult = await this.executeServerTool(toolCall.tool, toolCall.params);
+        } else {
+          const requestId = randomUUID();
+          logger.info({ arcId, tool: toolCall.tool, params: toolCall.params, round }, "Executing tool on agent");
+
+          toolResult = await agentService.executeToolOnAgent(
+            arcId,
+            requestId,
+            toolCall.tool,
+            toolCall.params,
+          );
+        }
 
         onEvent?.({ type: "tool_result", toolName: toolCall.tool, toolResult });
 
