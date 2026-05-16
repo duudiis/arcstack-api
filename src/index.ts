@@ -21,7 +21,7 @@ import { conversationsRoutes } from "./routes/conversations.js";
 import { healthRoutes } from "./routes/health.js";
 import { ConversationService } from "./services/conversation.service.js";
 import websocket from "@fastify/websocket";
-import { setupWebSockets } from "./socket/index.js";
+import { setupWebSockets, broadcastToClients } from "./socket/index.js";
 import { AIFactory } from "./llm/factory.js";
 import { LlmOrchestrator } from "./llm/orchestrator.js";
 import { WebService } from "./services/web.service.js";
@@ -91,6 +91,11 @@ async function main() {
   const agentService = new AgentService();
 
   computeService.ensureSshAccess().catch(() => {});
+
+  // Broadcast provisioning progress to connected clients
+  computeService.setProgressCallback((arcId, state, data) => {
+    broadcastToClients("arc:provisioning", { arcId, instanceState: state, ...data });
+  });
 
   const llmProvider = AIFactory.create("openai", {
     apiKey: config.OPENAI_API_KEY,

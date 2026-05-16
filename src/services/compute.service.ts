@@ -18,8 +18,11 @@ export interface ProvisionResult {
   publicIp: string | null;
 }
 
+export type ProvisionProgressCallback = (arcId: string, state: string, data?: Record<string, unknown>) => void;
+
 export class ComputeService {
   private ec2: EC2Client;
+  private onProgress: ProvisionProgressCallback | null = null;
 
   constructor(private prisma: PrismaClient) {
     this.ec2 = new EC2Client({
@@ -29,6 +32,10 @@ export class ComputeService {
         secretAccessKey: config.AWS_SECRET_ACCESS_KEY,
       },
     });
+  }
+
+  setProgressCallback(cb: ProvisionProgressCallback) {
+    this.onProgress = cb;
   }
 
   /**
@@ -148,6 +155,7 @@ echo "Finished: $(date)"
       where: { id: arcId },
       data: { instanceId, instanceState: "pending" },
     });
+    this.onProgress?.(arcId, "pending", { instanceId });
 
     // Wait for the instance to be in running state (up to 5 minutes)
     try {
@@ -171,6 +179,7 @@ echo "Finished: $(date)"
         instanceState: "running",
       },
     });
+    this.onProgress?.(arcId, "running", { instanceId, instanceIp: publicIp });
 
     logger.info({ arcId, instanceId, publicIp }, "EC2 instance provisioned successfully");
 

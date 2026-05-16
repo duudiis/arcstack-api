@@ -3,11 +3,24 @@ import { generateToken, hashToken } from "../utils/crypto.js";
 import { ComputeService } from "./compute.service.js";
 import { logger } from "../utils/logger.js";
 
+export type ArcEventCallback = (event: string, data: Record<string, unknown>) => void;
+
 export class ArcService {
+  private onEvent: ArcEventCallback | null = null;
+
   constructor(
     private prisma: PrismaClient,
     private compute: ComputeService,
   ) {}
+
+  /** Register a callback to receive real-time arc events (for WebSocket broadcast) */
+  setEventCallback(cb: ArcEventCallback) {
+    this.onEvent = cb;
+  }
+
+  private emit(event: string, data: Record<string, unknown>) {
+    if (this.onEvent) this.onEvent(event, data);
+  }
 
   async create(userId: string, name: string) {
     const rawToken = generateToken();
@@ -28,15 +41,29 @@ export class ArcService {
 
   private async provisionInBackground(arcId: string, arcName: string, agentToken: string) {
     try {
+      // Emit that provisioning started
+      this.emit("arc:provisioning", { arcId, instanceState: "launching" });
+
       await this.compute.provisionInstance(arcId, arcName, agentToken);
       logger.info({ arcId }, "EC2 instance provisioned and agent starting");
+
+      // Get updated arc to broadcast full state
+      const arc = await this.prisma.arc.findUnique({ where: { id: arcId } });
+      if (arc) {
+        this.emit("arc:provisioning", {
+          arcId,
+          instanceState: arc.instanceState,
+          instanceId: arc.instanceId,
+          instanceIp: arc.instanceIp,
+        });
+      }
     } catch (err) {
       logger.error({ arcId, err }, "Failed to provision EC2 instance");
-      // Mark the arc as ERROR so the user sees something went wrong
       await this.prisma.arc.update({
         where: { id: arcId },
         data: { status: "ERROR", instanceState: "failed" },
       });
+      this.emit("arc:status", { arcId, status: "ERROR", instanceState: "failed" });
     }
   }
 
@@ -52,18 +79,15 @@ export class ArcService {
   }
 
   async delete(id: string, userId: string) {
-    // Look up the arc first so we can terminate its instance
     const arc = await this.prisma.arc.findFirst({ where: { id, userId } });
     if (!arc) return { count: 0 };
 
-    // Terminate the EC2 instance if one exists
     if (arc.instanceId) {
       try {
         await this.compute.terminateInstance(arc.id);
         logger.info({ arcId: id, instanceId: arc.instanceId }, "EC2 instance terminated on arc deletion");
       } catch (err) {
         logger.error({ arcId: id, err }, "Failed to terminate EC2 instance during arc deletion");
-        // Continue with deletion anyway — orphaned instances can be cleaned up via tags
       }
     }
 
