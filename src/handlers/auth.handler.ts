@@ -219,7 +219,7 @@ function generateUsernameFromEmail(email: string): string {
 }
 
 function generateUsernameFromName(name: string): string {
-  // Remove spaces and special characters, keep alphanumeric, underscore, hyphen
-  const cleaned = name.replace(/\s+/g, "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24);
+  // Keep alphanumeric, underscore, hyphen, and spaces
+  const cleaned = name.replace(/[^a-zA-Z0-9_\-\s]/g, "").slice(0, 24);
   return cleaned || "user";
 }

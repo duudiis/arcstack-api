@@ -6,7 +6,7 @@ export const registerSchema = z.object({
     .string()
     .min(3)
     .max(32)
-    .regex(/^[a-zA-Z0-9_-]+$/),
+    .regex(/^[a-zA-Z0-9_\-\s]+$/),
   password: z.string().min(8).max(128),
 });
 
