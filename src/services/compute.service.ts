@@ -46,13 +46,7 @@ echo "Started: $(date)"
 
 # Update and install dependencies
 apt-get update -y
-apt-get install -y python3 python3-pip python3-venv git sudo bash curl wget
-
-# Create agent user with full sudo access (no password)
-useradd -m -s /bin/bash arcagent || true
-usermod -aG sudo arcagent
-echo "arcagent ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/arcagent
-chmod 0440 /etc/sudoers.d/arcagent
+apt-get install -y python3 python3-pip python3-venv git sudo bash curl wget net-tools htop unzip
 
 # Clone agent repo
 AGENT_DIR=/opt/arcstack-agent
@@ -65,23 +59,20 @@ python3 -m venv venv
 ./venv/bin/pip install -r requirements.txt
 
 # Create workspace directory
-mkdir -p /home/arcagent/workspace
-chown -R arcagent:arcagent /home/arcagent/workspace
+mkdir -p /root/workspace
 
 # Write agent configuration
 cat > "$AGENT_DIR/.env" <<ENVEOF
 AGENT_TOKEN=${agentToken}
 WS_URL=${config.AGENT_WS_URL}
-WORKSPACE_DIR=/home/arcagent/workspace
+WORKSPACE_DIR=/root/workspace
 LOG_LEVEL=INFO
 HEARTBEAT_INTERVAL=30
 COMMAND_TIMEOUT=120
 MAX_OUTPUT_SIZE=65536
 ENVEOF
 
-chown -R arcagent:arcagent "$AGENT_DIR"
-
-# Create systemd service
+# Create systemd service — runs as root for unrestricted access
 cat > /etc/systemd/system/arcstack-agent.service <<SVCEOF
 [Unit]
 Description=ArcStack Agent
@@ -90,13 +81,13 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=arcagent
-Group=arcagent
+User=root
+Group=root
 WorkingDirectory=$AGENT_DIR
 ExecStart=$AGENT_DIR/venv/bin/python -m src.main
 Restart=always
 RestartSec=5
-Environment=HOME=/home/arcagent
+Environment=HOME=/root
 
 [Install]
 WantedBy=multi-user.target
