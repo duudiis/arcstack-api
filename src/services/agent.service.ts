@@ -32,7 +32,7 @@ export class AgentService {
     requestId: string,
     tool: string,
     params: Record<string, unknown>,
-    timeoutMs = 30_000,
+    timeoutMs = 120_000,
   ): Promise<ToolResultPayload> {
     const agent = this.agents.get(arcId);
     if (!agent || agent.ws.readyState !== 1) {
