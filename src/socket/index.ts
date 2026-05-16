@@ -244,6 +244,19 @@ async function handleClientMessage(
       }
       break;
     }
+    case "chat:stop": {
+      const conversationId = msg.conversationId as string;
+      if (!conversationId) return;
+
+      const conversation = await conversationService.getById(conversationId, conn.userId);
+      if (!conversation) return;
+
+      const aborted = orchestrator.abortProcessing(conversation.arcId);
+      if (aborted) {
+        logger.info({ conversationId, arcId: conversation.arcId }, "Chat generation stopped by user");
+      }
+      break;
+    }
     case "metrics:subscribe": {
       const arcId = msg.arcId as string;
       if (arcId) conn.subscribedMetrics.add(arcId);

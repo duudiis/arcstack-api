@@ -98,25 +98,38 @@ export class OpenAIProvider extends BaseProvider {
     let content = "";
     const toolCallChunks = new Map<number, { id: string; name: string; args: string }>();
 
-    for await (const chunk of stream) {
-      const delta = chunk.choices[0]?.delta;
-      if (!delta) continue;
-
-      if (delta.content) {
-        content += delta.content;
-        callbacks?.onToken(delta.content);
-      }
-
-      if (delta.tool_calls) {
-        for (const tc of delta.tool_calls) {
-          if (!toolCallChunks.has(tc.index)) {
-            toolCallChunks.set(tc.index, { id: tc.id ?? "", name: tc.function?.name ?? "", args: "" });
-          }
-          const existing = toolCallChunks.get(tc.index)!;
-          if (tc.id) existing.id = tc.id;
-          if (tc.function?.name) existing.name = tc.function.name;
-          if (tc.function?.arguments) existing.args += tc.function.arguments;
+    try {
+      for await (const chunk of stream) {
+        if (callbacks?.signal?.aborted) {
+          stream.controller.abort();
+          break;
         }
+
+        const delta = chunk.choices[0]?.delta;
+        if (!delta) continue;
+
+        if (delta.content) {
+          content += delta.content;
+          callbacks?.onToken(delta.content);
+        }
+
+        if (delta.tool_calls) {
+          for (const tc of delta.tool_calls) {
+            if (!toolCallChunks.has(tc.index)) {
+              toolCallChunks.set(tc.index, { id: tc.id ?? "", name: tc.function?.name ?? "", args: "" });
+            }
+            const existing = toolCallChunks.get(tc.index)!;
+            if (tc.id) existing.id = tc.id;
+            if (tc.function?.name) existing.name = tc.function.name;
+            if (tc.function?.arguments) existing.args += tc.function.arguments;
+          }
+        }
+      }
+    } catch (err: any) {
+      if (err?.name === "AbortError" || callbacks?.signal?.aborted) {
+        // Aborted — return whatever content we have so far
+      } else {
+        throw err;
       }
     }
 

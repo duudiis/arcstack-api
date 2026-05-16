@@ -30,6 +30,8 @@ export interface OrchestratorResponse {
 }
 
 export class LlmOrchestrator {
+  private activeAborts = new Map<string, AbortController>();
+
   constructor(
     private provider: BaseProvider,
     private webService?: WebService,
@@ -79,21 +81,57 @@ export class LlmOrchestrator {
     onEvent?: (event: ChatEvent) => void,
     model?: string,
   ): Promise<OrchestratorResponse> {
+    const abortController = new AbortController();
+    const { signal } = abortController;
+    const conversationKey = `${arcId}`;
+    this.activeAborts.set(conversationKey, abortController);
+
+    try {
+      return await this._processMessageInner(arcId, userMessage, agentService, history, mode, onEvent, model, signal);
+    } finally {
+      this.activeAborts.delete(conversationKey);
+    }
+  }
+
+  abortProcessing(arcId: string): boolean {
+    const controller = this.activeAborts.get(arcId);
+    if (controller) {
+      controller.abort();
+      return true;
+    }
+    return false;
+  }
+
+  private async _processMessageInner(
+    arcId: string,
+    userMessage: string,
+    agentService: AgentService,
+    history: LlmMessage[],
+    mode: ArcMode = "default",
+    onEvent?: (event: ChatEvent) => void,
+    model?: string,
+    signal?: AbortSignal,
+  ): Promise<OrchestratorResponse> {
     const messages: LlmMessage[] = buildMessages(userMessage, history, mode);
     const allToolCalls: OrchestratorResponse["toolCalls"] = [];
     const chatOpts = model ? { model } : undefined;
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      if (signal?.aborted) {
+        return this._buildAbortedResponse(allToolCalls);
+      }
+
       onEvent?.({ type: "thinking" });
 
       const response = await this.provider.chatStream(messages, TOOL_DEFINITIONS, {
         onToken: (token) => onEvent?.({ type: "stream", content: token }),
         onDone: () => {},
+        signal,
       }, chatOpts);
 
-      // No tool calls — we have a final text response
-      if (response.toolCalls.length === 0) {
-        const content = response.content ?? "I'm not sure how to help with that.";
+      // No tool calls — we have a final text response (or was aborted mid-stream)
+      if (response.toolCalls.length === 0 || signal?.aborted) {
+        const content = response.content ?? (signal?.aborted ? "*Generation stopped by user.*" : "I'm not sure how to help with that.");
         const result: OrchestratorResponse = { content };
         if (allToolCalls.length > 0) {
           result.toolName = allToolCalls[0]!.tool;
@@ -122,6 +160,10 @@ export class LlmOrchestrator {
         if (SERVER_TOOLS.has(toolCall.tool)) {
           toolResult = await this.executeServerTool(toolCall.tool, toolCall.params);
         } else {
+          if (signal?.aborted) {
+            return this._buildAbortedResponse(allToolCalls);
+          }
+
           const requestId = randomUUID();
           logger.info({ arcId, tool: toolCall.tool, params: toolCall.params, round }, "Executing tool on agent");
 
@@ -166,6 +208,10 @@ export class LlmOrchestrator {
     }
 
     // Exceeded max rounds — ask LLM for a final summary without tools
+    if (signal?.aborted) {
+      return this._buildAbortedResponse(allToolCalls);
+    }
+
     onEvent?.({ type: "thinking" });
     const finalResponse = await this.provider.chatStream(
       [...messages, { role: "user", content: "Please provide a summary of everything you've done so far." }],
@@ -173,6 +219,7 @@ export class LlmOrchestrator {
       {
         onToken: (token) => onEvent?.({ type: "stream", content: token }),
         onDone: () => {},
+        signal,
       },
       chatOpts,
     );
@@ -185,6 +232,16 @@ export class LlmOrchestrator {
       toolCalls: allToolCalls,
     };
     onEvent?.({ type: "done", message: result });
+    return result;
+  }
+
+  private _buildAbortedResponse(allToolCalls: OrchestratorResponse["toolCalls"]): OrchestratorResponse {
+    const result: OrchestratorResponse = { content: "*Generation stopped by user.*" };
+    if (allToolCalls && allToolCalls.length > 0) {
+      result.toolName = allToolCalls[0]!.tool;
+      result.toolData = { calls: allToolCalls };
+      result.toolCalls = allToolCalls;
+    }
     return result;
   }
 }

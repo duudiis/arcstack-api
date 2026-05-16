@@ -26,6 +26,7 @@ export interface LlmResponse {
 export interface LlmStreamCallbacks {
   onToken: (token: string) => void;
   onDone: (fullContent: string) => void;
+  signal?: AbortSignal;
 }
 
 export interface ProviderConfig {
