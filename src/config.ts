@@ -12,6 +12,9 @@ const envSchema = z.object({
   FRONTEND_URL: z.string().url().default("http://localhost:3000"),
   COOKIE_DOMAIN: z.string().default("localhost"),
 
+  // Google OAuth
+  GOOGLE_CLIENT_ID: z.string().default(""),
+
   // AWS EC2 compute provisioning
   AWS_REGION: z.string().default("us-east-1"),
   AWS_ACCESS_KEY_ID: z.string().min(1),

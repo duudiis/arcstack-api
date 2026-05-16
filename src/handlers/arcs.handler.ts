@@ -3,6 +3,8 @@ import { ArcService } from "../services/arc.service.js";
 import { AppError } from "../utils/errors.js";
 import type { CreateArcInput, ArcParams, MessagesQuery } from "../schemas/arcs.schema.js";
 
+const MAX_ARCS_PER_USER = 1;
+
 export class ArcsHandler {
   constructor(private arcService: ArcService) {}
 
@@ -15,6 +17,12 @@ export class ArcsHandler {
   create = async (request: FastifyRequest, reply: FastifyReply) => {
     const userId = (request as any).userId as string;
     const { name } = request.body as CreateArcInput;
+
+    // Enforce 1 arc per user on free plan
+    const existing = await this.arcService.listByUser(userId);
+    if (existing.length >= MAX_ARCS_PER_USER) {
+      throw new AppError(403, "You've reached the maximum of 1 Arc on the free plan. Upgrade your plan to create more.", "PLAN_LIMIT");
+    }
 
     const { arc, rawToken } = await this.arcService.create(userId, name);
 
