@@ -138,8 +138,8 @@ export class AuthHandler {
         throw new AppError(403, "Beta is currently full. Only 3 users are allowed during the beta period.", "BETA_LIMIT");
       }
 
-      // Create new user from Google profile
-      const username = generateUsernameFromEmail(email);
+      // Create new user from Google profile — prefer display name over email
+      const username = name ? generateUsernameFromName(name) : generateUsernameFromEmail(email);
       // Ensure username is unique
       let finalUsername = username;
       let attempt = 0;
@@ -216,4 +216,10 @@ export class AuthHandler {
 function generateUsernameFromEmail(email: string): string {
   const local = email.split("@")[0] ?? "user";
   return local.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24) || "user";
+}
+
+function generateUsernameFromName(name: string): string {
+  // Remove spaces and special characters, keep alphanumeric, underscore, hyphen
+  const cleaned = name.replace(/\s+/g, "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24);
+  return cleaned || "user";
 }
