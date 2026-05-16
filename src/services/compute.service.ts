@@ -46,10 +46,13 @@ echo "Started: $(date)"
 
 # Update and install dependencies
 apt-get update -y
-apt-get install -y python3 python3-pip python3-venv git
+apt-get install -y python3 python3-pip python3-venv git sudo bash curl wget
 
-# Create agent user
+# Create agent user with full sudo access (no password)
 useradd -m -s /bin/bash arcagent || true
+usermod -aG sudo arcagent
+echo "arcagent ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/arcagent
+chmod 0440 /etc/sudoers.d/arcagent
 
 # Clone agent repo
 AGENT_DIR=/opt/arcstack-agent
@@ -72,7 +75,7 @@ WS_URL=${config.AGENT_WS_URL}
 WORKSPACE_DIR=/home/arcagent/workspace
 LOG_LEVEL=INFO
 HEARTBEAT_INTERVAL=30
-COMMAND_TIMEOUT=30
+COMMAND_TIMEOUT=120
 MAX_OUTPUT_SIZE=65536
 ENVEOF
 
