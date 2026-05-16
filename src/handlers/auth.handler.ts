@@ -14,7 +14,7 @@ const COOKIE_OPTIONS = {
   path: "/",
 };
 
-const MAX_BETA_USERS = 3;
+const MAX_BETA_USERS = 6;
 
 // Google JWKS for verifying ID tokens
 const googleJWKS = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2/v3/certs"));
