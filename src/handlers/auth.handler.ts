@@ -31,7 +31,7 @@ export class AuthHandler {
     // Beta limit: max 3 users
     const userCount = await this.prisma.user.count();
     if (userCount >= MAX_BETA_USERS) {
-      throw new AppError(403, "Beta is currently full. Only 3 users are allowed during the beta period.", "BETA_LIMIT");
+      throw new AppError(403, "Beta is currently full. Only 6 users are allowed during the beta period.", "BETA_LIMIT");
     }
 
     const existing = await this.prisma.user.findFirst({
@@ -135,7 +135,7 @@ export class AuthHandler {
       // Beta limit: max 3 users
       const userCount = await this.prisma.user.count();
       if (userCount >= MAX_BETA_USERS) {
-        throw new AppError(403, "Beta is currently full. Only 3 users are allowed during the beta period.", "BETA_LIMIT");
+        throw new AppError(403, "Beta is currently full. Only 6 users are allowed during the beta period.", "BETA_LIMIT");
       }
 
       // Create new user from Google profile — prefer display name over email
